@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Havel–Hakimi Visualizador</title>
+  <style>
+    /* Fuente y layout */
+    :root{
+      --blue:#3498db;
+      --yellow:#f39c12;
+      --green:#27ae60;
+      --red:#c0392b;
+      --box-size:64px;
+      --gap:12px;
+    }
+    html,body{height:100%;margin:0;font-family:Segoe UI, Tahoma, Arial, sans-serif;background:#f7f4ff;color:#222}
+    .container{max-width:980px;margin:24px auto;padding:20px;background:#fff;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,0.06)}
+    header{display:flex;align-items:center;gap:12px}
+    header h1{margin:0;font-size:20px}
+    .controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+    input[type=text]{padding:10px;border-radius:8px;border:1px solid #ddd;min-width:260px}
+    button{padding:10px 14px;border-radius:8px;border:0;background:var(--blue);color:#fff;cursor:pointer}
+    button.secondary{background:#6c7a89}
+    button.ghost{background:transparent;border:1px solid #ddd;color:#333}
+    .status{margin-left:auto;font-weight:600}
+
+    /* Visual area */
+    .visual{margin-top:18px;padding:18px;border-radius:8px;background:linear-gradient(180deg,#fbfbff,#fff);min-height:200px}
+    .sequence-row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:center}
+    .node{width:var(--box-size);height:var(--box-size);display:flex;align-items:center;justify-content:center;border-radius:8px;background:#eee;transition:all .4s ease, transform .4s cubic-bezier(.2,.9,.2,1);position:relative}
+    .node.index{width:28px;height:28px;font-size:12px;background:transparent;color:#666;border-radius:6px;border:1px dashed #e0e0e0}
+    .node.num{font-weight:700;font-size:18px}
+
+    /* colors for animation states */
+    .to-remove{background:var(--blue);color:#fff;transform:scale(1.05)}
+    .to-decrement{background:var(--yellow);color:#111;transform:scale(1.03)}
+    .done-zero{background:#ececec;color:#999}
+
+    /* message */
+    .message{margin-top:16px;font-size:18px;font-weight:700}
+    .message.ok{color:var(--green)}
+    .message.bad{color:var(--red)}
+
+    /* responsive */
+    @media (max-width:768px){
+      .container{margin:8px}
+      :root{--box-size:54px}
+      input[type=text]{min-width:180px}
+    }
+
+    /* subtle reordering helper: we animate using transform + absolute positioning fallback */
+    .sequence-wrapper{position:relative}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Visualizador Havel–Hakimi</h1>
+      <div class="status">Paso: <span id="stepCounter">0</span></div>
+    </header>
+
+    <p style="margin-top:10px;color:#444">Introduce una secuencia de grados separados por comas. Ej: <code>4,3,3,2,2,1,1</code></p>
+
+    <div class="controls">
+      <input id="seqInput" type="text" placeholder="ej: 4,3,3,2,2,1,1" value="4,3,3,2,2,1,1" aria-label="secuencia" />
+      <button id="validateBtn">Validar (iniciar)</button>
+      <button id="nextBtn" class="secondary" disabled>Paso Siguiente</button>
+      <button id="resetBtn" class="ghost">Reiniciar</button>
+      <div style="flex:1"></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div style="font-size:13px;color:#666">Resultado:</div>
+        <div id="finalMsg" class="message" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="visual" id="visualArea">
+      <div class="sequence-wrapper">
+        <div id="sequenceRow" class="sequence-row" aria-live="polite"></div>
+      </div>
+      <div style="margin-top:14px;color:#666;font-size:13px">Estados intermedios (debug): <pre id="debug" style="display:inline-block;margin:0;padding:6px 8px;border-radius:6px;background:#fafafa;border:1px solid #eee;max-width:100%;overflow:auto"></pre></div>
+    </div>
+  </div>
+
+  <script>
+    // Havel-Hakimi visualizer (vanilla JS)
+    // Comentarios: la UI implementa: Validar (inicia), Paso Siguiente (itera), Reiniciar.
+    // Animaciones y colores: d1 (eliminado) en azul, elementos a decrementar en amarillo.
+
+    const input = document.getElementById('seqInput');
+    const validateBtn = document.getElementById('validateBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const sequenceRow = document.getElementById('sequenceRow');
+    const finalMsg = document.getElementById('finalMsg');
+    const debug = document.getElementById('debug');
+    const stepCounter = document.getElementById('stepCounter');
+
+    // Internal state
+    let seq = [];        // history of states (for possible extension)
+    let running = false;
+    let step = 0;
+
+    function parseInput(text){
+      const arr = text.split(',').map(s=>s.trim()).filter(s=>s.length);
+      const nums = arr.map(x=>Number(x));
+      if(nums.some(v=>Number.isNaN(v))) return null;
+      return nums.map(x=>Math.floor(x));
+    }
+
+    function renderSequence(arr){
+      sequenceRow.innerHTML='';
+      // show numbered boxes with index and number
+      arr.forEach((v,i)=>{
+        const wrap = document.createElement('div');
+        wrap.style.display='flex';
+        wrap.style.flexDirection='column';
+        wrap.style.alignItems='center';
+        wrap.style.gap='6px';
+
+        const idx = document.createElement('div');
+        idx.className='node index';
+        idx.textContent = i+1;
+
+        const box = document.createElement('div');
+        box.className='node num';
+        box.dataset.pos = i; // position label
+        box.textContent = v;
+
+        // apply style for zeros
+        if(v===0) box.classList.add('done-zero');
+
+        wrap.appendChild(idx);
+        wrap.appendChild(box);
+        sequenceRow.appendChild(wrap);
+      });
+    }
+
+    function setMessage(ok, text){
+      finalMsg.className = ok? 'message ok' : 'message bad';
+      finalMsg.textContent = text;
+    }
+
+    function recordDebug(...lines){
+      debug.textContent = (debug.textContent? debug.textContent + '\n' : '') + lines.join(' ');
+    }
+
+    // Prepare the sequence to start the algorithm
+    function initialize(){
+      const parsed = parseInput(input.value);
+      debug.textContent = '';
+      step = 0;
+      stepCounter.textContent = step;
+      if(!parsed){
+        setMessage(false, '✖ Entrada inválida (asegura números enteros separados por comas)');
+        return false;
+      }
+      // copy
+      seq = parsed.slice();
+      // basic checks: non-negative
+      if(seq.some(x=>x<0)){
+        setMessage(false, '✖ Grados negativos en la entrada');
+        return false;
+      }
+      // sort desc
+      seq.sort((a,b)=>b-a);
+      renderSequence(seq);
+      setMessage(true, 'Iniciado — pulsa "Paso Siguiente"');
+      nextBtn.disabled = false;
+      running = true;
+      history = [seq.slice()];
+      recordDebug('Init:', JSON.stringify(seq));
+      return true;
+    }
+
+    // One iteration of Havel-Hakimi with animations and checks
+    async function stepOnce(){
+      if(!running) return;
+      step++;
+      stepCounter.textContent = step;
+
+      // sort (invariant: must be sorted before each iteration)
+      seq.sort((a,b)=>b-a);
+      recordDebug(`Iter ${step} sorted: `+JSON.stringify(seq));
+
+      // if all zeros -> accept
+      if(seq.length===0 || seq.every(x=>x===0)){
+        setMessage(true, '✓ Es Gráfica (todos ceros)');
+        nextBtn.disabled = true;
+        running = false;
+        return;
+      }
+
+      const k = seq[0];
+      // check degree feasibility
+      if(k > seq.length -1){
+        setMessage(false, '✖ No Gráfica (grado max > n-1)');
+        nextBtn.disabled = true;
+        running = false;
+        recordDebug('Fail: k > n-1',k,seq.length-1);
+        return;
+      }
+
+      // prepare R (restantes)
+      let R = seq.slice(1); // copy
+
+      // Render intermediate state: highlight removed and decremented
+      renderSequence(seq);
+      // highlight the first node (to remove)
+      const firstBox = sequenceRow.querySelector('.node.num');
+      if(firstBox) firstBox.classList.add('to-remove');
+
+      // highlight first k to decrement (in the remaining list)
+      // we need to find the corresponding boxes: after the first wrap
+      const boxes = Array.from(sequenceRow.querySelectorAll('.node.num'));
+      // boxes[0] is the one removed; boxes[1..k] are the ones to decrement
+      for(let i=1;i<=k;i++){
+        if(boxes[i]) boxes[i].classList.add('to-decrement');
+      }
+
+      // wait for animation glimpse
+      await sleep(450);
+
+      // perform subtraction
+      for(let i=0;i<k;i++){
+        R[i] = R[i] - 1;
+      }
+
+      // check negatives
+      if(R.some(x=>x<0)){
+        // update UI to show negatives
+        seq = [0].concat(R); // for display
+        renderSequence(seq);
+        setMessage(false, '✖ No Gráfica (grados negativos durante ejecución)');
+        nextBtn.disabled = true;
+        running = false;
+        recordDebug('Fail negatives:', JSON.stringify(R));
+        return;
+      }
+
+      // now new sequence is R
+      seq = R.slice();
+      // show intermediate
+      renderSequence([/* placeholder */].concat(seq));
+      recordDebug(`After subtract: `+JSON.stringify(seq));
+
+      // Reorder with animation: we simulate by waiting then sorting
+      // Add minimal visual effect: mark transition
+      await sleep(100);
+      // sort desc
+      seq.sort((a,b)=>b-a);
+      recordDebug(`After reorder: `+JSON.stringify(seq));
+      renderSequence(seq);
+
+      history.push(seq.slice());
+
+      // termination checks
+      if(seq.length===0 || seq.every(x=>x===0)){
+        setMessage(true, '✓ Es Gráfica (todos ceros)');
+        nextBtn.disabled = true;
+        running = false;
+        return;
+      }
+
+      // if not ended, keep enabled
+      setMessage(true, 'Iteración completada — pulsa siguiente');
+    }
+
+    function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+    // Reset to initial UI state
+    function reset(){
+      nextBtn.disabled = true;
+      running = false;
+      seq = [];
+      history = [];
+      step = 0;
+      stepCounter.textContent = step;
+      renderSequence([]);
+      finalMsg.textContent = '';
+      debug.textContent = '';
+    }
+
+    // Event wiring
+    validateBtn.addEventListener('click', ()=>{
+      reset();
+      initialize();
+    });
+
+    nextBtn.addEventListener('click', async ()=>{
+      // disable while step runs to avoid double-click issues
+      nextBtn.disabled = true;
+      await stepOnce();
+      if(running) nextBtn.disabled = false;
+    });
+
+    resetBtn.addEventListener('click', reset);
+
+    // initial render
+    renderSequence([]);
+  </script>
+  <script>
+    // Contador de operaciones y exportación
+ 
+
+    function logState(seq, action){
+      stepCounter++;
+      history.push({ step: stepCounter, seq: [...seq], action });
+    }
+
+    // Hook existente
+    const originalNextStep = nextStep;
+    nextStep = function(){
+      originalNextStep();
+      const boxes = document.querySelectorAll('.box');
+      const current = [...boxes].map(b => parseInt(b.innerText));
+      logState(current, 'Iteración');
+    }
+
+    function exportHistory(){
+      let text = history.map(h => `Paso ${h.step}: ${h.action} | [${h.seq.join(', ')}]`).join("\n");
+      const blob = new Blob([text], {type: 'text/plain'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'historial_havel.txt';
+      a.click();
+    }
+  </script>
+ 
+</body>
+</html>
