@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Visualización Floyd-Warshall</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.8.0/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+        }
+        h2 {
+            border-bottom: 2px solid #ccc;
+            padding-bottom: 5px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        /* Estilo para la celda actualizada (verde claro) */
+        .updated {
+            background-color: #d4edc6; 
+            font-weight: bold;
+        }
+        .matrix-container table {
+            width: 100%;
+        }
+        .matrix-container th, .matrix-container td {
+            padding: 4px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Visualización del Algoritmo Floyd-Warshall</h1>
+    
+    <p>Grafo: 0: [(1,4), (2,11)], 1: [(2,2)], 2: [(0,6), (3,7)], 3: [(1,2)]</p>
+
+    <hr>
+    
+    <h2>1. Diagrama del Grafo Ponderado</h2>
+    <div class="mermaid">
+        %% Diagrama del grafo ponderado
+        graph TD
+            0((0)) ---|4| 1((1))
+            0 ---|11| 2((2))
+            1 -->|2| 2
+            2 -->|6| 0
+            2 -->|7| 3((3))
+            3 -->|2| 1
+    </div>
+
+    <hr>
+
+    <h2>2. Ejecución Paso a Paso: Matriz de Distancias</h2>
+
+    <table>
+        <tr>
+            <th>Paso (k)</th>
+            <th>Matriz de Distancias D[i][j] (Valores Actualizados en Verde)</th>
+        </tr>
+        <tr>
+            <td>**Inicial ($D^{(0)}$)**</td>
+            <td class="matrix-container">
+                <table>
+                    <tr><th>i/j</th><th>0</th><th>1</th><th>2</th><th>3</th></tr>
+                    <tr><td>**0**</td><td>0</td><td>4</td><td>11</td><td>&infin;</td></tr>
+                    <tr><td>**1**</td><td>&infin;</td><td>0</td><td>2</td><td>&infin;</td></tr>
+                    <tr><td>**2**</td><td>6</td><td>&infin;</td><td>0</td><td>7</td></tr>
+                    <tr><td>**3**</td><td>&infin;</td><td>2</td><td>&infin;</td><td>0</td></tr>
+                </table>
+            </td>
+        </tr>
+        <tr>
+            <td>**k=0 (Intermedio: 0)**</td>
+            <td class="matrix-container">
+                <table>
+                    <tr><th>i/j</th><th>0</th><th>1</th><th>2</th><th>3</th></tr>
+                    <tr><td>**0**</td><td>0</td><td>4</td><td>11</td><td>&infin;</td></tr>
+                    <tr><td>**1**</td><td>&infin;</td><td>0</td><td>2</td><td>&infin;</td></tr>
+                    <tr><td>**2**</td><td>6</td><td><span class="updated">10</span></td><td>0</td><td>7</td></tr>
+                    <tr><td>**3**</td><td>&infin;</td><td>2</td><td>&infin;</td><td>0</td></tr>
+                </table>
+            </td>
+        </tr>
+        <tr>
+            <td>**k=1 (Intermedio: 1)**</td>
+            <td class="matrix-container">
+                <table>
+                    <tr><th>i/j</th><th>0</th><th>1</th><th>2</th><th>3</th></tr>
+                    <tr><td>**0**</td><td>0</td><td>4</td><td><span class="updated">6</span></td><td>&infin;</td></tr>
+                    <tr><td>**1**</td><td>&infin;</td><td>0</td><td>2</td><td>&infin;</td></tr>
+                    <tr><td>**2**</td><td>6</td><td>10</td><td><span class="updated">12</span></td><td>7</td></tr>
+                    <tr><td>**3**</td><td>&infin;</td><td>2</td><td><span class="updated">4</span></td><td>0</td></tr>
+                </table>
+            </td>
+        </tr>
+        <tr>
+            <td>**k=2 (Intermedio: 2)**</td>
+            <td class="matrix-container">
+                <table>
+                    <tr><th>i/j</th><th>0</th><th>1</th><th>2</th><th>3</th></tr>
+                    <tr><td>**0**</td><td><span class="updated">12</span></td><td>4</td><td>6</td><td><span class="updated">13</span></td></tr>
+                    <tr><td>**1**</td><td><span class="updated">8</span></td><td>0</td><td>2</td><td><span class="updated">9</span></td></tr>
+                    <tr><td>**2**</td><td>6</td><td>10</td><td>0</td><td>7</td></tr>
+                    <tr><td>**3**</td><td><span class="updated">10</span></td><td>2</td><td>4</td><td><span class="updated">11</span></td></tr>
+                </table>
+            </td>
+        </tr>
+        <tr>
+            <td>**k=3 (Intermedio: 3)**</td>
+            <td class="matrix-container">
+                <table>
+                    <tr><th>i/j</th><th>0</th><th>1</th><th>2</th><th>3</th></tr>
+                    <tr><td>**0**</td><td>12</td><td><span class="updated">14</span></td><td>6</td><td>13</td></tr>
+                    <tr><td>**1**</td><td>8</td><td><span class="updated">11</span></td><td>2</td><td>9</td></tr>
+                    <tr><td>**2**</td><td>6</td><td><span class="updated">9</span></td><td>0</td><td>7</td></tr>
+                    <tr><td>**3**</td><td>10</td><td>2</td><td>4</td><td>0</td></tr>
+                </table>
+            </td>
+        </tr>
+        <tr>
+            <td>**Final ($D^{(4)}$)**</td>
+            <td class="matrix-container">
+                <table>
+                    <tr><th>i/j</th><th>0</th><th>1</th><th>2</th><th>3</th></tr>
+                    <tr><td>**0**</td><td>12</td><td>14</td><td>6</td><td>13</td></tr>
+                    <tr><td>**1**</td><td>8</td><td>11</td><td>2</td><td>9</td></tr>
+                    <tr><td>**2**</td><td>6</td><td>9</td><td>0</td><td>7</td></tr>
+                    <tr><td>**3**</td><td>10</td><td>2</td><td>4</td><td>0</td></tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+
+</body>
+</html>
